@@ -1,0 +1,64 @@
+<!doctype html><meta charset=utf-8><style>*{box-sizing:border-box}body{margin:0;font-family:Inter,Segoe UI,Helvetica,Arial,sans-serif;background:#0f1115;color:#e8eaf0;padding:36px 40px;width:1400px}
+h1{font-size:26px;margin:0 0 4px}.sub{color:#9aa3b5;margin:0 0 22px;font-size:15px}
+.badge{display:inline-block;background:#ffb020;color:#1a1200;font-weight:700;font-size:13px;padding:4px 10px;border-radius:6px;margin-left:10px;vertical-align:middle}
+.lane{display:flex;align-items:center;gap:0;margin:14px 0;flex-wrap:nowrap}.lane h3{width:150px;flex:none;font-size:13px;color:#9aa3b5;text-transform:uppercase;letter-spacing:.06em;margin:0}
+.n{background:#1b1f29;border:1px solid #2c3242;border-radius:10px;padding:10px 12px;min-width:118px;max-width:190px;font-size:13px;line-height:1.3}
+.n b{display:block;font-size:13.5px}.n i{font-style:normal;color:#8b93a7;font-size:11.5px}
+.t{border-color:#3d6df2}.c{border-color:#22b07d}.h{border-color:#d9822b}.x{border-color:#e05a8a}.g{border-color:#a970ff}
+.ar{color:#56607a;font-size:20px;padding:0 8px}.stack{display:flex;flex-direction:column;gap:6px}
+.foot{margin-top:24px;color:#8b93a7;font-size:13px;border-top:1px solid #262b38;padding-top:12px}
+pre{background:#161a22;border:1px solid #2c3242;border-radius:10px;padding:16px;font-size:13px;line-height:1.45;white-space:pre-wrap;margin:0}
+table{border-collapse:collapse;width:100%;font-size:13px}td,th{border-bottom:1px solid #262b38;padding:7px 8px;text-align:left;vertical-align:top}th{color:#9aa3b5;font-weight:600}
+.pill{padding:2px 8px;border-radius:99px;font-size:12px;font-weight:600}.lead{background:#1d3b2c;color:#5ee0a0}.support{background:#1d2c4b;color:#7fa8ff}.billing{background:#3b2f1a;color:#ffc56b}.spam{background:#3b1d26;color:#ff7d9b}.needs_triage{background:#2e2a40;color:#c4b2ff}
+.grid{display:grid;grid-template-columns:1fr 1fr;gap:18px}</style><h1>Shopify + Stripe order lookup — sample run<span class=badge>Demo with sample data</span></h1><p class=sub>Real n8n execution against a local mock API serving invented SAMPLE orders and charges (<code>test/e2e_n8n.sh</code>).</p><div class=grid><div><h3 style='margin:0 0 8px;color:#9aa3b5;font-size:14px'>POST {"query": "maria.sample@shop-customer.example"} → JSON (trimmed)</h3><pre>{
+  &quot;ok&quot;: true,
+  &quot;query&quot;: {
+    &quot;kind&quot;: &quot;email&quot;,
+    &quot;value&quot;: &quot;maria.sample@shop-customer.example&quot;
+  },
+  &quot;sources&quot;: {
+    &quot;shopify&quot;: &quot;ok&quot;,
+    &quot;stripe&quot;: &quot;ok&quot;
+  },
+  &quot;summary&quot;: {
+    &quot;orders&quot;: 3,
+    &quot;stripe_charges&quot;: 3,
+    &quot;unmatched_stripe_charges&quot;: 1,
+    &quot;needs_attention&quot;: true
+  },
+  &quot;orders&quot;: [
+    {
+      &quot;order_number&quot;: &quot;#1001&quot;,
+      &quot;total&quot;: &quot;84.50 USD&quot;,
+      &quot;shopify_payment_status&quot;: &quot;PAID&quot;,
+      &quot;fulfillment_status&quot;: &quot;FULFILLED&quot;,
+      &quot;payment_check&quot;: &quot;ok&quot;,
+      &quot;stripe&quot;: &quot;ch_SAMPLE_1001&quot;,
+      &quot;tracking&quot;: [
+        &quot;1ZSAMPLE0000000001&quot;
+      ]
+    },
+    {
+      &quot;order_number&quot;: &quot;#1002&quot;,
+      &quot;total&quot;: &quot;120.00 USD&quot;,
+      &quot;shopify_payment_status&quot;: &quot;PARTIALLY_REFUNDED&quot;,
+      &quot;fulfillment_status&quot;: &quot;UNFULFILLED&quot;,
+      &quot;payment_check&quot;: &quot;partially_refunded&quot;,
+      &quot;stripe&quot;: &quot;ch_SAMPLE_1002&quot;,
+      &quot;tracking&quot;: []
+    },
+    {
+      &quot;order_number&quot;: &quot;#1003&quot;,
+      &quot;total&quot;: &quot;19.00 USD&quot;,
+      &quot;shopify_payment_status&quot;: &quot;PAID&quot;,
+      &quot;fulfillment_status&quot;: &quot;UNFULFILLED&quot;,
+      &quot;payment_check&quot;: &quot;not_a_stripe_payment (gateway: paypal)&quot;,
+      &quot;stripe&quot;: null,
+      &quot;tracking&quot;: []
+    }
+  ]
+}</pre></div><div><h3 style='margin:0 0 8px;color:#9aa3b5;font-size:14px'>slack_text / telegram_text</h3><pre>Lookup &quot;m***@shop-customer.example&quot;: 3 order(s), 1 unmatched Stripe charge(s)
+✅ Order #1001 · 84.50 USD · Shopify: PAID/FULFILLED · Stripe: succeeded · check: ok · UPS 1ZSAMPLE0000000001
+⚠️ Order #1002 · 120.00 USD · Shopify: PARTIALLY_REFUNDED/UNFULFILLED · Stripe: succeeded, refunded 40.00 USD · check: partially_refunded
+ℹ️ Order #1003 · 19.00 USD · Shopify: PAID/UNFULFILLED · Stripe: no charge · check: not_a_stripe_payment (gateway: paypal)
+• Stripe charge ch_SAMPLE_extra 39.00 USD failed (no matching order)</pre></div></div><div class=foot>Paopao Studio · demo built on n8n · all names, emails, orders and payments shown are invented SAMPLE data, not a client result · paopao-studio.pages.dev</div>

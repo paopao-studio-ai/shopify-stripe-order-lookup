@@ -1,0 +1,112 @@
+{
+  "_note": "SAMPLE: output of a real n8n execution against a local mock API with invented data.",
+  "result": {
+    "ok": true,
+    "query": {
+      "kind": "email",
+      "value": "maria.sample@shop-customer.example"
+    },
+    "checked_at": "2026-10-29T12:00:00Z",
+    "sources": {
+      "shopify": "ok",
+      "stripe": "ok"
+    },
+    "summary": {
+      "orders": 3,
+      "stripe_charges": 3,
+      "unmatched_stripe_charges": 1,
+      "needs_attention": true
+    },
+    "orders": [
+      {
+        "order_number": "#1001",
+        "created_at": "2026-10-20T15:02:11Z",
+        "email": "maria.sample@shop-customer.example",
+        "customer": "Maria Sample",
+        "cancelled": false,
+        "total": "84.50 USD",
+        "shopify_payment_status": "PAID",
+        "fulfillment_status": "FULFILLED",
+        "items": [
+          "2\u00d7 Ceramic mug (SAMPLE)",
+          "1\u00d7 Gift wrap"
+        ],
+        "tracking": [
+          {
+            "company": "UPS",
+            "number": "1ZSAMPLE0000000001",
+            "url": "https://www.ups.com/track?tracknum=1ZSAMPLE0000000001",
+            "status": "IN_TRANSIT"
+          }
+        ],
+        "order_status_url": "https://sample-store.example/orders/1001",
+        "stripe": {
+          "charge_id": "ch_SAMPLE_1001",
+          "matched_by": "metadata",
+          "status": "succeeded",
+          "amount": "84.50 USD",
+          "refunded": "0.00 USD",
+          "disputed": false,
+          "receipt_url": "https://pay.stripe.com/receipts/SAMPLE_1001",
+          "created_at": "2026-10-20T15:02:30.000Z"
+        },
+        "payment_check": "ok"
+      },
+      {
+        "order_number": "#1002",
+        "created_at": "2026-10-25T09:40:00Z",
+        "email": "maria.sample@shop-customer.example",
+        "customer": "Maria Sample",
+        "cancelled": false,
+        "total": "120.00 USD",
+        "shopify_payment_status": "PARTIALLY_REFUNDED",
+        "fulfillment_status": "UNFULFILLED",
+        "items": [
+          "3\u00d7 Linen apron (SAMPLE)"
+        ],
+        "tracking": [],
+        "order_status_url": "https://sample-store.example/orders/1002",
+        "stripe": {
+          "charge_id": "ch_SAMPLE_1002",
+          "matched_by": "email+amount+date",
+          "status": "succeeded",
+          "amount": "120.00 USD",
+          "refunded": "40.00 USD",
+          "disputed": false,
+          "receipt_url": "https://pay.stripe.com/receipts/SAMPLE_1002",
+          "created_at": "2026-10-25T09:40:20.000Z"
+        },
+        "payment_check": "partially_refunded"
+      },
+      {
+        "order_number": "#1003",
+        "created_at": "2026-10-27T18:15:00Z",
+        "email": "maria.sample@shop-customer.example",
+        "customer": "Maria Sample",
+        "cancelled": false,
+        "total": "19.00 USD",
+        "shopify_payment_status": "PAID",
+        "fulfillment_status": "UNFULFILLED",
+        "items": [
+          "1\u00d7 Tea towel (SAMPLE)"
+        ],
+        "tracking": [],
+        "order_status_url": "https://sample-store.example/orders/1003",
+        "stripe": null,
+        "payment_check": "not_a_stripe_payment (gateway: paypal)"
+      }
+    ],
+    "unmatched_stripe_charges": [
+      {
+        "charge_id": "ch_SAMPLE_extra",
+        "status": "failed",
+        "amount": "39.00 USD",
+        "refunded": "0.00 USD",
+        "created_at": "2026-10-26T10:00:00.000Z",
+        "description": "SAMPLE declined card"
+      }
+    ],
+    "slack_text": "*Lookup \"m***@shop-customer.example\": 3 order(s), 1 unmatched Stripe charge(s)*\n\u2705 Order #1001 \u00b7 84.50 USD \u00b7 Shopify: PAID/FULFILLED \u00b7 Stripe: succeeded \u00b7 check: ok \u00b7 UPS 1ZSAMPLE0000000001\n\u26a0\ufe0f Order #1002 \u00b7 120.00 USD \u00b7 Shopify: PARTIALLY_REFUNDED/UNFULFILLED \u00b7 Stripe: succeeded, refunded 40.00 USD \u00b7 check: partially_refunded\n\u2139\ufe0f Order #1003 \u00b7 19.00 USD \u00b7 Shopify: PAID/UNFULFILLED \u00b7 Stripe: no charge \u00b7 check: not_a_stripe_payment (gateway: paypal)\n\u2022 Stripe charge ch_SAMPLE_extra 39.00 USD failed (no matching order)",
+    "telegram_text": "Lookup \"m***@shop-customer.example\": 3 order(s), 1 unmatched Stripe charge(s)\n\u2705 Order #1001 \u00b7 84.50 USD \u00b7 Shopify: PAID/FULFILLED \u00b7 Stripe: succeeded \u00b7 check: ok \u00b7 UPS 1ZSAMPLE0000000001\n\u26a0\ufe0f Order #1002 \u00b7 120.00 USD \u00b7 Shopify: PARTIALLY_REFUNDED/UNFULFILLED \u00b7 Stripe: succeeded, refunded 40.00 USD \u00b7 check: partially_refunded\n\u2139\ufe0f Order #1003 \u00b7 19.00 USD \u00b7 Shopify: PAID/UNFULFILLED \u00b7 Stripe: no charge \u00b7 check: not_a_stripe_payment (gateway: paypal)\n\u2022 Stripe charge ch_SAMPLE_extra 39.00 USD failed (no matching order)"
+  }
+}

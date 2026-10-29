@@ -1,0 +1,553 @@
+{
+  "name": "Shopify + Stripe order lookup (webhook → merged status JSON)",
+  "nodes": [
+    {
+      "id": "t-hook",
+      "name": "Webhook: POST /order-lookup",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        0,
+        0
+      ],
+      "webhookId": "5b0c2f4e-7d1a-4e8b-9a51-order-lookup",
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "order-lookup",
+        "authentication": "headerAuth",
+        "responseMode": "responseNode",
+        "options": {}
+      }
+    },
+    {
+      "id": "t-manual",
+      "name": "Test run",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [
+        0,
+        220
+      ],
+      "parameters": {}
+    },
+    {
+      "id": "s-sample",
+      "name": "Sample request (SAMPLE)",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        220,
+        220
+      ],
+      "parameters": {
+        "mode": "manual",
+        "includeOtherFields": false,
+        "options": {},
+        "assignments": {
+          "assignments": [
+            {
+              "id": "cfg-90",
+              "name": "body.query",
+              "value": "#1001",
+              "type": "string"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "s-config",
+      "name": "Config",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        440,
+        100
+      ],
+      "parameters": {
+        "mode": "manual",
+        "includeOtherFields": true,
+        "options": {},
+        "assignments": {
+          "assignments": [
+            {
+              "id": "cfg-1",
+              "name": "shopifyBaseUrl",
+              "value": "https://YOUR-STORE.myshopify.com",
+              "type": "string"
+            },
+            {
+              "id": "cfg-2",
+              "name": "shopifyApiVersion",
+              "value": "2025-10",
+              "type": "string"
+            },
+            {
+              "id": "cfg-3",
+              "name": "stripeBaseUrl",
+              "value": "https://api.stripe.com",
+              "type": "string"
+            },
+            {
+              "id": "cfg-4",
+              "name": "stripeOrderMetadataKey",
+              "value": "order_number",
+              "type": "string"
+            },
+            {
+              "id": "cfg-5",
+              "name": "maxOrders",
+              "value": 5,
+              "type": "number"
+            },
+            {
+              "id": "cfg-6",
+              "name": "nowOverride",
+              "value": "",
+              "type": "string"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "c-parse",
+      "name": "Parse query",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        660,
+        100
+      ],
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "language": "javaScript",
+        "jsCode": "// n8n Code node: \"Parse query\" (mode: Run Once for All Items)\n// Accepts POST {\"query\": \"...\"} (or {\"email\": ...} / {\"order\": ...}) or GET ?q=...\n// Decides whether the caller gave an email or an order number and builds the Shopify search string.\nconst j = $input.first().json;\nconst b = (j.body && typeof j.body === 'object') ? j.body : {};\nconst q = (j.query && typeof j.query === 'object') ? j.query : {};\nconst raw = String(b.query ?? b.email ?? b.order ?? b.order_number ?? q.q ?? q.email ?? q.order ?? '').trim();\nconst cfg = j; // Config fields are passed through (includeOtherFields)\n\nlet kind = null, email = '', orderNumber = '';\nif (/^[^\\s@]+@[^\\s@]+\\.[^\\s@]{2,}$/.test(raw)) { kind = 'email'; email = raw.toLowerCase(); }\nelse {\n  const m = raw.match(/^(?:order\\s*)?#?\\s*([A-Za-z]{0,6}-?\\d{1,12})$/i);\n  if (m) { kind = 'order_number'; orderNumber = m[1].toUpperCase(); }\n}\nif (!kind) {\n  return [{ json: { ok: false, status: 400, error: 'Send {\"query\": \"<customer email or order number like #1001>\"}', received: raw.slice(0, 80) } }];\n}\nconst GQL = `query OrderLookup($q: String!, $first: Int!) {\n  orders(first: $first, query: $q, sortKey: CREATED_AT, reverse: true) {\n    nodes {\n      id name createdAt email cancelledAt statusPageUrl\n      displayFinancialStatus displayFulfillmentStatus paymentGatewayNames\n      totalPriceSet { shopMoney { amount currencyCode } }\n      customer { displayName }\n      lineItems(first: 10) { nodes { title quantity } }\n      fulfillments(first: 5) { status displayStatus trackingInfo(first: 3) { company number url } }\n    }\n  }\n}`;\nconst esc = s => s.replace(/[\"\\\\]/g, '');\nconst shopifySearch = kind === 'email' ? `email:\"${esc(email)}\"` : `name:\"#${esc(orderNumber.replace(/^#/, ''))}\"`;\nreturn [{ json: {\n  ok: true, kind, email, orderNumber, raw,\n  shopifySearch,\n  shopifyGraphql: GQL,\n  nowOverride: cfg.nowOverride || '',\n  maxOrders: Number(cfg.maxOrders) || 5,\n  shopifyBaseUrl: String(cfg.shopifyBaseUrl || '').replace(/\\/+$/, ''),\n  shopifyApiVersion: cfg.shopifyApiVersion || '2025-10',\n  stripeBaseUrl: String(cfg.stripeBaseUrl || 'https://api.stripe.com').replace(/\\/+$/, ''),\n  stripeOrderMetadataKey: cfg.stripeOrderMetadataKey || 'order_number',\n} }];\n"
+      }
+    },
+    {
+      "id": "i-valid",
+      "name": "Valid query?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        880,
+        100
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "v1",
+              "leftValue": "={{ $json.ok }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "h-shop",
+      "name": "Shopify: find orders",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1100,
+        0
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $json.shopifyBaseUrl }}/admin/api/{{ $json.shopifyApiVersion }}/graphql.json",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "shopifyAccessTokenApi",
+        "options": {
+          "timeout": 20000
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ query: $json.shopifyGraphql, variables: { q: $json.shopifySearch, first: $json.maxOrders } }) }}"
+      },
+      "retryOnFail": true,
+      "maxTries": 2,
+      "waitBetweenTries": 2000,
+      "onError": "continueRegularOutput"
+    },
+    {
+      "id": "c-plan",
+      "name": "Plan Stripe search",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1320,
+        0
+      ],
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "language": "javaScript",
+        "jsCode": "// n8n Code node: \"Plan Stripe search\" (mode: Run Once for All Items)\n// Stripe's charge search cannot filter by email, so we (1) find Stripe customers by email, then\n// (2) search charges by customer id OR by the order number stored in charge metadata.\n// The email comes from the request, or from the Shopify order when the caller sent an order number.\nconst p = $('Parse query').first().json;\nconst shop = $input.first().json;\nconst orders = (shop && shop.data && shop.data.orders && shop.data.orders.nodes) || [];\nconst emails = new Set();\nif (p.email) emails.add(p.email);\nfor (const o of orders) if (o.email) emails.add(String(o.email).toLowerCase());\nconst orderNos = new Set(orders.map(o => String(o.name || '').replace(/^#/, '')).filter(Boolean));\nif (p.orderNumber) orderNos.add(p.orderNumber.replace(/^#/, ''));\nconst em = [...emails].slice(0, 5);\nconst q = s => '\"' + String(s).replace(/[\"\\\\]/g, '') + '\"';\nreturn [{ json: {\n  emails: em,\n  orderNumbers: [...orderNos].slice(0, 5),\n  // A query must not be empty; the fallback clause simply matches nothing.\n  customerQuery: em.length ? em.map(e => 'email:' + q(e)).join(' OR ') : 'email:\"no-email@invalid.invalid\"',\n  orderClauses: [...orderNos].slice(0, 5).map(n => `metadata[${q(p.stripeOrderMetadataKey)}]:${q(n)}`),\n} }];\n"
+      }
+    },
+    {
+      "id": "h-cust",
+      "name": "Stripe: find customers",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1540,
+        0
+      ],
+      "parameters": {
+        "method": "GET",
+        "url": "={{ $('Parse query').first().json.stripeBaseUrl }}/v1/customers/search",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "stripeApi",
+        "options": {
+          "timeout": 20000
+        },
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "query",
+              "value": "={{ $json.customerQuery }}"
+            },
+            {
+              "name": "limit",
+              "value": "10"
+            }
+          ]
+        }
+      },
+      "retryOnFail": true,
+      "maxTries": 2,
+      "waitBetweenTries": 2000,
+      "onError": "continueRegularOutput"
+    },
+    {
+      "id": "c-cq",
+      "name": "Build charge query",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1760,
+        0
+      ],
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "language": "javaScript",
+        "jsCode": "// n8n Code node: \"Build charge query\" (mode: Run Once for All Items)\nconst plan = $('Plan Stripe search').first().json;\nconst res = $input.first().json;\nconst customers = (res && Array.isArray(res.data)) ? res.data : [];\nconst clauses = [...customers.slice(0, 5).map(c => `customer:\"${c.id}\"`), ...plan.orderClauses].slice(0, 10); // Stripe max 10 clauses\nreturn [{ json: {\n  customerIds: customers.map(c => c.id),\n  chargeQuery: clauses.length ? clauses.join(' OR ') : 'metadata[\"order_number\"]:\"no-match-0\"',\n} }];\n"
+      }
+    },
+    {
+      "id": "h-charges",
+      "name": "Stripe: search charges",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1980,
+        0
+      ],
+      "parameters": {
+        "method": "GET",
+        "url": "={{ $('Parse query').first().json.stripeBaseUrl }}/v1/charges/search",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "stripeApi",
+        "options": {
+          "timeout": 20000
+        },
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "query",
+              "value": "={{ $json.chargeQuery }}"
+            },
+            {
+              "name": "limit",
+              "value": "20"
+            }
+          ]
+        }
+      },
+      "retryOnFail": true,
+      "maxTries": 2,
+      "waitBetweenTries": 2000,
+      "onError": "continueRegularOutput"
+    },
+    {
+      "id": "c-merge",
+      "name": "Merge order + payment status",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2200,
+        0
+      ],
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "language": "javaScript",
+        "jsCode": "// n8n Code node: \"Merge order + payment status\" (mode: Run Once for All Items)\n// Joins Shopify orders with Stripe charges and returns one JSON answer plus Slack- and Telegram-ready text.\n// A charge belongs to an order when its metadata carries the order number, or (fallback) when it was made\n// by the same customer email for the same amount and currency within 3 days of the order.\nconst p = $('Parse query').first().json;\nconst shopRes = $('Shopify: find orders').first().json;\nconst custRes = $('Stripe: find customers').first().json;\nconst chargeRes = $input.first().json;\nconst nowIso = p.nowOverride || new Date().toISOString();\n\nconst errOf = r => (r && r.error) ? (r.error.message || r.error.description || JSON.stringify(r.error)).toString().slice(0, 200)\n  : (r && Array.isArray(r.errors) && r.errors.length) ? String(r.errors[0].message || r.errors[0]).slice(0, 200) : null;\nconst sources = { shopify: errOf(shopRes) ? 'error: ' + errOf(shopRes) : 'ok',\n                  stripe: (errOf(custRes) || errOf(chargeRes)) ? 'error: ' + (errOf(custRes) || errOf(chargeRes)) : 'ok' };\n\nconst orders = (shopRes && shopRes.data && shopRes.data.orders && shopRes.data.orders.nodes) || [];\nconst customers = (custRes && Array.isArray(custRes.data)) ? custRes.data : [];\nconst charges = (chargeRes && Array.isArray(chargeRes.data)) ? chargeRes.data : [];\nconst custEmail = Object.fromEntries(customers.map(c => [c.id, String(c.email || '').toLowerCase()]));\nconst ZERO_DEC = ['bif','clp','djf','gnf','jpy','kmf','krw','mga','pyg','rwf','ugx','vnd','vuv','xaf','xof','xpf'];\nconst toMinor = (amount, cur) => Math.round(Number(amount) * (ZERO_DEC.includes(String(cur).toLowerCase()) ? 1 : 100));\nconst money = (minor, cur) => { const z = ZERO_DEC.includes(String(cur).toLowerCase()); return `${(z ? minor : minor / 100).toFixed(z ? 0 : 2)} ${String(cur).toUpperCase()}`; };\nconst mdKey = p.stripeOrderMetadataKey || 'order_number';\nconst used = new Set();\n\nfunction paymentCheck(o, ch, totalMinor, cur) {\n  if (!ch) {\n    const gw = (o.paymentGatewayNames || []).join(', ');\n    return /stripe/i.test(gw) ? 'stripe_charge_not_found' : `not_a_stripe_payment (gateway: ${gw || 'unknown'})`;\n  }\n  if (ch.disputed) return 'disputed';\n  if (ch.status !== 'succeeded') return 'payment_' + ch.status;\n  if (ch.refunded) return 'refunded';\n  if (ch.amount_refunded > 0) return 'partially_refunded';\n  if (ch.amount !== totalMinor || String(ch.currency).toLowerCase() !== String(cur).toLowerCase()) return 'amount_mismatch';\n  return 'ok';\n}\n\nconst merged = orders.map(o => {\n  const no = String(o.name || '').replace(/^#/, '');\n  const total = (o.totalPriceSet && o.totalPriceSet.shopMoney) || {};\n  const cur = total.currencyCode || 'USD';\n  const totalMinor = toMinor(total.amount || 0, cur);\n  const created = new Date(o.createdAt).getTime() / 1000;\n  let ch = charges.find(c => !used.has(c.id) && c.metadata && String(c.metadata[mdKey] || '').replace(/^#/, '') === no);\n  let matchedBy = ch ? 'metadata' : null;\n  if (!ch) {\n    ch = charges.find(c => !used.has(c.id) && c.amount === totalMinor && String(c.currency).toLowerCase() === cur.toLowerCase()\n      && Math.abs(c.created - created) < 3 * 86400 && (custEmail[c.customer] || '') === String(o.email || '').toLowerCase());\n    if (ch) matchedBy = 'email+amount+date';\n  }\n  if (ch) used.add(ch.id);\n  const tracking = (o.fulfillments || []).flatMap(f => (f.trackingInfo || []).map(t => ({ company: t.company || '', number: t.number || '', url: t.url || '', status: f.displayStatus || f.status || '' })));\n  const check = paymentCheck(o, ch, totalMinor, cur);\n  return {\n    order_number: o.name, created_at: o.createdAt, email: o.email || '', customer: (o.customer && o.customer.displayName) || '',\n    cancelled: !!o.cancelledAt,\n    total: money(totalMinor, cur),\n    shopify_payment_status: o.displayFinancialStatus || '', fulfillment_status: o.displayFulfillmentStatus || '',\n    items: ((o.lineItems && o.lineItems.nodes) || []).map(li => `${li.quantity}× ${li.title}`),\n    tracking, order_status_url: o.statusPageUrl || '',\n    stripe: ch ? { charge_id: ch.id, matched_by: matchedBy, status: ch.status, amount: money(ch.amount, ch.currency),\n                   refunded: money(ch.amount_refunded || 0, ch.currency), disputed: !!ch.disputed, receipt_url: ch.receipt_url || '',\n                   created_at: new Date(ch.created * 1000).toISOString() } : null,\n    payment_check: check,\n  };\n});\nconst unmatched = charges.filter(c => !used.has(c.id)).map(c => ({ charge_id: c.id, status: c.status, amount: money(c.amount, c.currency),\n  refunded: money(c.amount_refunded || 0, c.currency), created_at: new Date(c.created * 1000).toISOString(), description: c.description || '' }));\n\nconst maskEmail = e => e ? e.replace(/^(.)[^@]*(@.*)$/, '$1***$2') : '';\nconst line = o => {\n  const t = o.tracking[0];\n  const flag = o.payment_check === 'ok' ? '✅' : (/not_a_stripe/.test(o.payment_check) ? 'ℹ️' : '⚠️');\n  return `${flag} Order ${o.order_number}${o.cancelled ? ' (CANCELLED)' : ''} · ${o.total} · Shopify: ${o.shopify_payment_status}/${o.fulfillment_status}` +\n    ` · Stripe: ${o.stripe ? o.stripe.status + (o.stripe.refunded.startsWith('0.00') || o.stripe.refunded.startsWith('0 ') ? '' : ', refunded ' + o.stripe.refunded) : 'no charge'}` +\n    ` · check: ${o.payment_check}` + (t ? ` · ${t.company} ${t.number}` : '');\n};\nconst head = `Lookup \"${p.kind === 'email' ? maskEmail(p.email) : '#' + p.orderNumber}\": ${merged.length} order(s), ${unmatched.length} unmatched Stripe charge(s)`;\nconst body = merged.length ? merged.map(line) : ['No Shopify order found.'];\nif (unmatched.length) body.push(...unmatched.map(c => `• Stripe charge ${c.charge_id} ${c.amount} ${c.status} (no matching order)`));\nconst warn = Object.entries(sources).filter(([, v]) => v !== 'ok').map(([k, v]) => `${k} ${v}`);\nif (warn.length) body.push('Source problem: ' + warn.join('; '));\nconst plain = [head, ...body].join('\\n');\nconst needsAttention = merged.some(o => !['ok'].includes(o.payment_check) && !/not_a_stripe/.test(o.payment_check)) || warn.length > 0;\n\nreturn [{ json: {\n  ok: warn.length === 0, query: { kind: p.kind, value: p.kind === 'email' ? p.email : '#' + p.orderNumber },\n  checked_at: nowIso, sources,\n  summary: { orders: merged.length, stripe_charges: charges.length, unmatched_stripe_charges: unmatched.length, needs_attention: needsAttention },\n  orders: merged, unmatched_stripe_charges: unmatched,\n  slack_text: `*${head}*\\n` + body.join('\\n'),\n  telegram_text: plain,\n} }];\n"
+      }
+    },
+    {
+      "id": "r-ok",
+      "name": "Respond 200",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [
+        2420,
+        0
+      ],
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify($json, null, 2) }}",
+        "options": {
+          "responseCode": 200
+        }
+      }
+    },
+    {
+      "id": "r-bad",
+      "name": "Respond 400",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [
+        1100,
+        240
+      ],
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify($json) }}",
+        "options": {
+          "responseCode": 400
+        }
+      }
+    },
+    {
+      "id": "sl-post",
+      "name": "Post to Slack (optional)",
+      "type": "n8n-nodes-base.slack",
+      "typeVersion": 2.3,
+      "position": [
+        2420,
+        220
+      ],
+      "disabled": true,
+      "parameters": {
+        "select": "channel",
+        "channelId": {
+          "__rl": true,
+          "mode": "name",
+          "value": "#orders"
+        },
+        "text": "={{ $json.slack_text }}",
+        "otherOptions": {}
+      }
+    },
+    {
+      "id": "tg-post",
+      "name": "Send to Telegram (optional)",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        2420,
+        420
+      ],
+      "disabled": true,
+      "parameters": {
+        "chatId": "YOUR_CHAT_ID",
+        "text": "={{ $json.telegram_text }}",
+        "additionalFields": {
+          "appendAttribution": false
+        }
+      }
+    },
+    {
+      "id": "n-1",
+      "name": "About",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -40,
+        -420
+      ],
+      "parameters": {
+        "width": 640,
+        "height": 380,
+        "content": "## Shopify + Stripe order lookup (demo by Paopao Studio)\nPOST `{\"query\": \"#1001\"}` or `{\"query\": \"customer@email.com\"}` → one JSON with order, payment, refund, dispute and tracking status, plus `slack_text` / `telegram_text` ready for a support bot.\n\n**Credentials**: *Shopify Access Token API* (custom app, scope `read_orders`; older than 60 days needs `read_all_orders`), *Stripe API* (restricted key, read-only Customers + Charges), *Header Auth* on the webhook.\n\n**Config**: set `shopifyBaseUrl` to `https://<store>.myshopify.com`. If your checkout writes the order number into Stripe charge metadata, set `stripeOrderMetadataKey`; otherwise charges are matched by customer email + amount + date.\n\n**Test**: click *Test workflow* (uses *Sample request (SAMPLE)*)."
+      }
+    }
+  ],
+  "connections": {
+    "Webhook: POST /order-lookup": {
+      "main": [
+        [
+          {
+            "node": "Config",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Test run": {
+      "main": [
+        [
+          {
+            "node": "Sample request (SAMPLE)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Sample request (SAMPLE)": {
+      "main": [
+        [
+          {
+            "node": "Config",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Config": {
+      "main": [
+        [
+          {
+            "node": "Parse query",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse query": {
+      "main": [
+        [
+          {
+            "node": "Valid query?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Valid query?": {
+      "main": [
+        [
+          {
+            "node": "Shopify: find orders",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Respond 400",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Shopify: find orders": {
+      "main": [
+        [
+          {
+            "node": "Plan Stripe search",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Plan Stripe search": {
+      "main": [
+        [
+          {
+            "node": "Stripe: find customers",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Stripe: find customers": {
+      "main": [
+        [
+          {
+            "node": "Build charge query",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build charge query": {
+      "main": [
+        [
+          {
+            "node": "Stripe: search charges",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Stripe: search charges": {
+      "main": [
+        [
+          {
+            "node": "Merge order + payment status",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Merge order + payment status": {
+      "main": [
+        [
+          {
+            "node": "Respond 200",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Post to Slack (optional)",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Send to Telegram (optional)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "pinData": {},
+  "meta": {
+    "templateCredsSetupCompleted": false
+  },
+  "tags": []
+}
